@@ -1,7 +1,11 @@
 package com.example.batteryalert
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -29,51 +33,117 @@ class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
+        Log.d("MainActivity", "Permission result: $isGranted")
         if (isGranted) {
+            Log.d("MainActivity", "Permission granted, setting up components")
+            setupComponents()
             startMonitoringService()
         } else {
             Toast.makeText(this, "Permissions required for alerts", Toast.LENGTH_LONG).show()
         }
     }
 
+    private val multiplePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        Log.d("MainActivity", "Permission results: $permissions")
+        // If all permissions are granted
+        if (permissions.all { it.value }) {
+            Log.d("MainActivity", "All permissions granted, initializing app")
+            setupComponents()
+            startMonitoringService()
+        } else {
+            Log.d("MainActivity", "Some permissions denied")
+            Toast.makeText(this, "Permissions required for alerts", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun checkRequiredPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED ||
-                checkSelfPermission(android.Manifest.permission.WAKE_LOCK) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(
-                    arrayOf(
-                        android.Manifest.permission.POST_NOTIFICATIONS,
-                        android.Manifest.permission.WAKE_LOCK
-                    ),
-                    PERMISSION_REQUEST_CODE
-                )
-                return
+            val permissions = arrayOf(
+                android.Manifest.permission.POST_NOTIFICATIONS,
+                android.Manifest.permission.WAKE_LOCK
+            )
+
+            val permissionsToRequest = permissions.filter {
+                checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+            }.toTypedArray()
+
+            if (permissionsToRequest.isNotEmpty()) {
+                Log.d("MainActivity", "Requesting permissions: ${permissionsToRequest.joinToString()}")
+                multiplePermissionLauncher.launch(permissionsToRequest)
+            } else {
+                Log.d("MainActivity", "All permissions already granted")
+                setupComponents()
+                startMonitoringService()
             }
+        } else {
+            Log.d("MainActivity", "No permissions needed for this Android version")
+            setupComponents()
+            startMonitoringService()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
+            Log.d("MainActivity", "onCreate started")
             setContentView(R.layout.activity_main)
 
-            // Initialize views first
+            // Always initialize views
             initializeViews()
+            Log.d("MainActivity", "Views initialized")
 
-            // Check permissions before doing anything else
-            checkRequiredPermissions()
-
-            // Only setup other components if permissions are granted
+            // Check and request permissions if needed
             if (hasRequiredPermissions()) {
-                setupClickListeners()
-                observeViewModel()
-                setupWorkManager()
+                Log.d("MainActivity", "Has required permissions, setting up components")
+                setupComponents()
+                // Automatically start monitoring if permissions are already granted
+                startMonitoringService()
+            } else {
+                Log.d("MainActivity", "Requesting permissions")
+                checkRequiredPermissions()
             }
         } catch (e: Exception) {
             Log.e("MainActivity", "Error in onCreate", e)
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
 
+    // New method to encapsulate all component setup
+    private fun setupComponents() {
+        Log.d("MainActivity", "Setting up components")
+        setupClickListeners()
+        observeViewModel()
+        setupWorkManager()
+    }
+
+    // Add direct battery receiver registration
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d("MainActivity", "Battery broadcast received")
+            if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                val batteryPct = if (level >= 0 && scale > 0) level * 100 / scale else -1
+                Log.d("MainActivity", "Battery level: $batteryPct%")
+            }
+        }
+    }
+
+    private fun registerBatteryReceiver() {
+        Log.d("MainActivity", "Registering battery receiver")
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        registerReceiver(batteryReceiver, filter)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            unregisterReceiver(batteryReceiver)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error unregistering receiver", e)
+        }
     }
 
     private fun hasRequiredPermissions(): Boolean {
@@ -112,18 +182,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun observeViewModel() {
+        Log.d("MainActivity", "Setting up ViewModel observers")
         viewModel.prediction.observe(this) { prediction ->
+            Log.d("MainActivity", "Received prediction update: $prediction")
             val minutesLeft = prediction?.minutesLeft?.toInt() ?: -1
 
             val displayMinutes = when {
                 minutesLeft <= 0 -> "N/A"
                 minutesLeft > 1440 -> "> 24h"
-                minutesLeft >= 60 -> "${minutesLeft / 60}h ${minutesLeft % 60}min" // Convert to hours and minutes
+                minutesLeft >= 60 -> "${minutesLeft / 60}h ${minutesLeft % 60}min"
                 else -> "$minutesLeft min"
             }
 
             predictionTextView.text = getString(R.string.minutes_left_format, displayMinutes)
-
             updateConfidenceIndicator(prediction.confidence)
         }
     }
@@ -148,15 +219,43 @@ class MainActivity : ComponentActivity() {
         confidenceIndicator.visibility = visibility
     }
 
+    private var isReceiverRegistered = false
+
     private fun startMonitoringService() {
+        Log.d("MainActivity", "Starting monitoring service")
         val serviceIntent = Intent(this, BatteryMonitorService::class.java)
-        ContextCompat.startForegroundService(this, serviceIntent)
-        updateButtonStates(isMonitoring = true)
+        try {
+            ContextCompat.startForegroundService(this, serviceIntent)
+            if (!isReceiverRegistered) {
+                registerBatteryReceiver()
+                isReceiverRegistered = true
+            }
+            updateButtonStates(isMonitoring = true)
+            Log.d("MainActivity", "Service started successfully")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error starting service", e)
+            Toast.makeText(this, "Error starting service: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun stopMonitoringService() {
-        stopService(Intent(this, BatteryMonitorService::class.java))
-        updateButtonStates(isMonitoring = false)
+        Log.d("MainActivity", "Stopping monitoring service")
+        try {
+            stopService(Intent(this, BatteryMonitorService::class.java))
+            if (isReceiverRegistered) {
+                try {
+                    unregisterReceiver(batteryReceiver)
+                    isReceiverRegistered = false
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error unregistering receiver", e)
+                }
+            }
+            updateButtonStates(isMonitoring = false)
+            Log.d("MainActivity", "Service stopped successfully")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error stopping service", e)
+            Toast.makeText(this, "Error stopping service: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun updateButtonStates(isMonitoring: Boolean) {
@@ -189,6 +288,5 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val WORKER_NAME = "BatteryMonitorRestart"
-        private const val PERMISSION_REQUEST_CODE = 123
     }
 }

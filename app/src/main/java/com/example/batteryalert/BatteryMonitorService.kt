@@ -34,6 +34,7 @@ class BatteryMonitorService : Service() {
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d("BatteryMonitorService", "Battery broadcast received in service")
             if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
                 val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
                 val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
@@ -44,6 +45,9 @@ class BatteryMonitorService : Service() {
                 val batteryPct = if (level >= 0 && scale > 0) level * 100 / scale else -1
                 val temperature = if (temperatureTenths != -1) temperatureTenths / 10.0 else -1.0
                 val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+                Log.d("BatteryMonitorService", "Battery update - Level: $batteryPct%, " +
+                        "Voltage: $voltage, Temp: $temperature, Charging: $isCharging")
+
                 updateBatteryStatus(batteryPct, temperature, voltage, isCharging)
             }
         }
@@ -52,6 +56,7 @@ class BatteryMonitorService : Service() {
     override fun onCreate() {
         try {
             super.onCreate()
+            Log.d("BatteryMonitorService", "onCreate started")
             estimator = ImprovedBatteryCycleEstimator.getInstance(this)
             predictionLearning = PredictionLearning.getInstance(this)
             powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -62,7 +67,9 @@ class BatteryMonitorService : Service() {
             // Start the service in the foreground with an initial notification
             // Ensure notification is created before starting foreground
             val notification = buildNotification()
+            Log.d("BatteryMonitorService", "Starting foreground service")
             startForeground(Constants.NOTIFICATION_ID, notification)
+            Log.d("BatteryMonitorService", "Service started in foreground")
         } catch (e: Exception) {
             Log.e("BatteryMonitorService", "Error in onCreate", e)
             stopSelf()
@@ -76,14 +83,17 @@ class BatteryMonitorService : Service() {
         isCharging: Boolean
     ) {
         try {
+            Log.d("BatteryMonitorService", "Updating battery status")
             estimator.updateBatteryStatus(batteryPct, temperature, voltage, isCharging)
 
             // Add these lines to detect critical battery conditions
             if (voltage <= Constants.MIN_VOLTAGE || batteryPct <= 1) {
+                Log.d("BatteryMonitorService", "Critical battery condition detected")
                 predictionLearning.recordActualShutdown()
             }
 
             val prediction = estimator.predictTimeToShutdown()
+            Log.d("BatteryMonitorService", "Prediction: $prediction")
             updateNotificationWithPrediction(prediction)
 
             checkShutdownConditions(prediction, voltage, batteryPct, temperature, isCharging)
@@ -262,7 +272,9 @@ class BatteryMonitorService : Service() {
     }
 
     private fun registerBatteryReceiver() {
-        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        Log.d("BatteryMonitorService", "Registering battery receiver in service")
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        registerReceiver(batteryReceiver, filter)
     }
 
     private fun createNotificationChannel() {
