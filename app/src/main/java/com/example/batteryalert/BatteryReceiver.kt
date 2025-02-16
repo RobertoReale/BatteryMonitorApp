@@ -26,17 +26,30 @@ class BatteryReceiver : BroadcastReceiver() {
             }
 
             val estimator = ImprovedBatteryCycleEstimator.getInstance(context)
-            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL
             estimator.updateBatteryStatus(batteryPct, temperature, voltage, isCharging)
 
             val prediction = estimator.predictTimeToShutdown()
 
-            val needsMonitoring = batteryPct <= Constants.LOW_BATTERY_PERCENTAGE || voltage < Constants.LOW_VOLTAGE_THRESHOLD || prediction.minutesLeft < 10.0
+            val needsMonitoring = batteryPct <= Constants.LOW_BATTERY_PERCENTAGE ||
+                    voltage < Constants.LOW_VOLTAGE_THRESHOLD ||
+                    prediction.minutesLeft < 10.0
 
-            if (needsMonitoring) {
+            // Instead of checking running services (deprecated), use SharedPreferences to track service state
+            val prefs = context.getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
+            val isServiceRunning = prefs.getBoolean("isServiceRunning", false)
+
+            if (needsMonitoring && !isServiceRunning) {
+                Log.d("BatteryReceiver", "Starting BatteryMonitorService - " +
+                        "batteryPct: $batteryPct%, voltage: $voltage, " +
+                        "prediction: ${prediction.minutesLeft} minutes")
                 context.startForegroundService(Intent(context, BatteryMonitorService::class.java))
-            } else if (isCharging) {
+                prefs.edit().putBoolean("isServiceRunning", true).apply()
+            } else if (isCharging && isServiceRunning) {
+                Log.d("BatteryReceiver", "Stopping BatteryMonitorService - device is charging")
                 context.stopService(Intent(context, BatteryMonitorService::class.java))
+                prefs.edit().putBoolean("isServiceRunning", false).apply()
             }
         }
     }
