@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
                 setupClickListeners()
                 observeViewModel()
                 setupWorkManager()
+                startMonitoringService()
             }
         } catch (e: Exception) {
             Log.e("MainActivity", "Error in onCreate", e)
