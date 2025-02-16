@@ -53,10 +53,22 @@ class BatteryMonitorService : Service() {
         }
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d("BatteryMonitorService", "Service started via onStartCommand")
+        return START_STICKY
+    }
+
     override fun onCreate() {
         try {
             super.onCreate()
             Log.d("BatteryMonitorService", "onCreate started")
+
+            // Mark service as running
+            getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("isServiceRunning", true)
+                .apply()
+
             estimator = ImprovedBatteryCycleEstimator.getInstance(this)
             predictionLearning = PredictionLearning.getInstance(this)
             powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -72,6 +84,10 @@ class BatteryMonitorService : Service() {
             Log.d("BatteryMonitorService", "Service started in foreground")
         } catch (e: Exception) {
             Log.e("BatteryMonitorService", "Error in onCreate", e)
+            getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("isServiceRunning", false)
+                .apply()
             stopSelf()
         }
     }
@@ -180,47 +196,58 @@ class BatteryMonitorService : Service() {
             level
         )
 
-        // Acquire the partial WakeLock only for this critical countdown
-        if (wakeLock?.isHeld != true) {
-            wakeLock = powerManager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "BatteryAlert:ShutdownMonitorCountdown"
-            ).apply {
-                acquire(10*60*1000L /*10 minutes*/) // acquire with no specific timeout, we'll release once we’re done
-            }
-        }
-
-        countdownJob = serviceScope.launch {
-            var secondsLeft = 30
-
-            while (secondsLeft >= 0 && isActive) {
-                val urgencyLevel = when {
-                    secondsLeft <= 5 -> NotificationManager.IMPORTANCE_HIGH
-                    secondsLeft <= 15 -> NotificationManager.IMPORTANCE_DEFAULT
-                    else -> NotificationManager.IMPORTANCE_LOW
+        var acquiredWakeLock = false
+        try {
+            // Acquire the partial WakeLock only for this critical countdown
+            if (wakeLock?.isHeld != true) {
+                wakeLock = powerManager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "BatteryAlert:ShutdownMonitorCountdown"
+                ).apply {
+                    acquire(10*60*1000L /*10 minutes*/)
                 }
-
-                updateCountdownNotification(secondsLeft, urgencyLevel)
-
-                if (secondsLeft == 0) {
-                    updateNotification(
-                        "Device Shutting Down",
-                        "Shutdown imminent - please save your work immediately",
-                        NotificationManager.IMPORTANCE_HIGH
-                    )
-                    // Optionally call stopSelf() if you want the service gone afterwards:
-                    // stopSelf()
-                    break
-                }
-
-                delay(1000)
-                secondsLeft--
+                acquiredWakeLock = true
             }
+
+            countdownJob = serviceScope.launch {
+                var secondsLeft = 30
+
+                while (secondsLeft >= 0 && isActive) {
+                    val urgencyLevel = when {
+                        secondsLeft <= 5 -> NotificationManager.IMPORTANCE_HIGH
+                        secondsLeft <= 15 -> NotificationManager.IMPORTANCE_DEFAULT
+                        else -> NotificationManager.IMPORTANCE_LOW
+                    }
+
+                    updateCountdownNotification(secondsLeft, urgencyLevel)
+
+                    if (secondsLeft == 0) {
+                        updateNotification(
+                            "Device Shutting Down",
+                            "Shutdown imminent - please save your work immediately",
+                            NotificationManager.IMPORTANCE_HIGH
+                        )
+                        break
+                    }
+
+                    delay(1000)
+                    secondsLeft--
+                }
+                isCountdownActive = false
+            }
+        } catch (e: Exception) {
+            Log.e("BatteryMonitorService", "Error in shutdown countdown", e)
             isCountdownActive = false
-
-            // Release the WakeLock once the countdown ends
-            if (wakeLock?.isHeld == true) {
-                wakeLock?.release()
+            throw e // Re-throw to ensure we don't swallow the exception
+        } finally {
+            // Only release if we acquired it in this method
+            if (acquiredWakeLock && wakeLock?.isHeld == true) {
+                try {
+                    wakeLock?.release()
+                } catch (e: Exception) {
+                    Log.e("BatteryMonitorService", "Error releasing WakeLock", e)
+                }
+                wakeLock = null
             }
         }
     }
@@ -292,15 +319,39 @@ class BatteryMonitorService : Service() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
-        serviceJob.cancel()
-        countdownJob?.cancel()
+        try {
+            super.onDestroy()
+            serviceJob.cancel()
+            countdownJob?.cancel()
 
-        wakeLock?.let {
-            if (it.isHeld) it.release()
+            wakeLock?.let {
+                try {
+                    if (it.isHeld) {
+                        it.release()
+                    } else {
+                        // No action needed if lock isn't held
+                        Log.d("BatteryMonitorService", "WakeLock not held, no need to release")
+                    }
+                } catch (e: Exception) {
+                    Log.e("BatteryMonitorService", "Error releasing WakeLock", e)
+                }
+            }
+
+            try {
+                unregisterReceiver(batteryReceiver)
+            } catch (e: Exception) {
+                Log.e("BatteryMonitorService", "Error unregistering receiver", e)
+            }
+
+            // Mark service as not running
+            getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("isServiceRunning", false)
+                .apply()
+
+        } catch (e: Exception) {
+            Log.e("BatteryMonitorService", "Error in onDestroy", e)
         }
-
-        unregisterReceiver(batteryReceiver)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
