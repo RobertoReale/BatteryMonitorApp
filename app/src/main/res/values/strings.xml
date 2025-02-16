@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The name of your app -->
+    <string name="app_name">Battery Alert</string>
+
+    <!-- Button text for starting the monitoring service -->
+    <string name="start_monitoring">Start Monitoring</string>
+
+    <!-- Button text for stopping the monitoring service -->
+    <string name="stop_monitoring">Stop Monitoring</string>
+
+    <!-- TextView label for displaying battery cycles (with a numeric placeholder) -->
+    <string name="estimated_battery_cycles">Estimated Battery Cycles: %1$.2f</string>
+
+    <!-- Alternative format string for estimated cycles -->
+    <string name="estimated_cycles_format">Estimated Battery Cycles: %.2f</string>
+
+    <!-- Text for showing when battery monitoring is active -->
+    <string name="battery_monitoring_active">Battery monitoring active</string>
+
+    <!-- New string for displaying predicted minutes until shutdown -->
+    <string name="minutes_left_format">Minutes to Shutdown: %1$s</string>
+
+</resources>

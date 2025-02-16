@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest package="com.example.batteryalert"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Permissions for wake locks, posting notifications, and (optional) receive boot completed. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Uncomment if you want to detect phone reboots for advanced learning:
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    -->
+
+    <application
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.BatteryAlert">
+
+        <!-- BroadcastReceiver to listen for battery changes -->
+        <receiver
+            android:name=".BatteryReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BATTERY_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Declare the foreground service -->
+        <service
+            android:name=".BatteryMonitorService"
+            android:exported="true"
+            android:foregroundServiceType="dataSync"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup" />
+        </provider>
+
+        <!-- Main activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>
