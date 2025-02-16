@@ -12,6 +12,7 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
     private var cumulativeDischarge: Double = prefs.getFloat(KEY_CUMULATIVE_DISCHARGE, 0f).toDouble()
     private var estimatedCycles: Double = prefs.getFloat(KEY_ESTIMATED_CYCLES, 0f).toDouble()
     private var previousBatteryLevel: Int = prefs.getInt(KEY_PREVIOUS_LEVEL, -1)
+    private val predictionLearning = PredictionLearning.getInstance(context)
 
     // New fields for improved prediction
     private var lastTemperature: Double = 0.0
@@ -188,9 +189,12 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
             return ShutdownPrediction(Double.POSITIVE_INFINITY, PredictionConfidence.CHARGING)
         }
 
-        // Adjust drain rate based on actual voltage instead of linear rate
+        // Get base prediction
         val adjustedDrainRate = getBatteryDrainRate(currentRecord.voltage)
         var minutesLeft = currentRecord.batteryLevel / adjustedDrainRate
+
+        // Apply learned adjustment
+        minutesLeft *= predictionLearning.getPredictionAdjustment()
 
         // Prevent overly optimistic estimates
         minutesLeft = minutesLeft.coerceAtMost(1440.0)

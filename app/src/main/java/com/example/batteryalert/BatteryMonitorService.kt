@@ -30,6 +30,8 @@ class BatteryMonitorService : Service() {
 
     private lateinit var estimator: ImprovedBatteryCycleEstimator
 
+    private lateinit var predictionLearning: PredictionLearning
+
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
@@ -51,13 +53,16 @@ class BatteryMonitorService : Service() {
         try {
             super.onCreate()
             estimator = ImprovedBatteryCycleEstimator.getInstance(this)
+            predictionLearning = PredictionLearning.getInstance(this)
             powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
 
             createNotificationChannel()
             registerBatteryReceiver()
 
             // Start the service in the foreground with an initial notification
-            startForeground(Constants.NOTIFICATION_ID, buildNotification())
+            // Ensure notification is created before starting foreground
+            val notification = buildNotification()
+            startForeground(Constants.NOTIFICATION_ID, notification)
         } catch (e: Exception) {
             Log.e("BatteryMonitorService", "Error in onCreate", e)
             stopSelf()
@@ -72,6 +77,11 @@ class BatteryMonitorService : Service() {
     ) {
         try {
             estimator.updateBatteryStatus(batteryPct, temperature, voltage, isCharging)
+
+            // Add these lines to detect critical battery conditions
+            if (voltage <= Constants.MIN_VOLTAGE || batteryPct <= 1) {
+                predictionLearning.recordActualShutdown()
+            }
 
             val prediction = estimator.predictTimeToShutdown()
             updateNotificationWithPrediction(prediction)
@@ -123,10 +133,15 @@ class BatteryMonitorService : Service() {
         voltage: Int,
         isCharging: Boolean
     ) {
-        val batterySafe = batteryPct > Constants.LOW_BATTERY_PERCENTAGE && voltage >= Constants.LOW_VOLTAGE_THRESHOLD
+        val batterySafe = batteryPct > Constants.LOW_BATTERY_PERCENTAGE &&
+                voltage >= Constants.LOW_VOLTAGE_THRESHOLD
         val prediction = estimator.predictTimeToShutdown()
 
-        if (isCharging || batterySafe || prediction.confidence == ImprovedBatteryCycleEstimator.PredictionConfidence.HIGH) {
+        if (isCharging || batterySafe ||
+            prediction.confidence == ImprovedBatteryCycleEstimator.PredictionConfidence.HIGH) {
+            if (isCountdownActive) {
+                predictionLearning.recordWarningCancelled()
+            }
             Log.d("BatteryMonitorService", "Battery is stable, stopping service.")
             stopSelf()
         }
@@ -135,6 +150,25 @@ class BatteryMonitorService : Service() {
     private fun startShutdownCountdown() {
         isCountdownActive = true
         countdownJob?.cancel()
+
+        // Record the start of the warning
+        val prediction = estimator.predictTimeToShutdown()
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val voltage = batteryIntent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
+        val temperatureTenths = batteryIntent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
+        val temperature = temperatureTenths / 10.0
+        val level = batteryIntent?.let { intent ->
+            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+            if (level >= 0 && scale > 0) level * 100 / scale else -1
+        } ?: -1
+
+        predictionLearning.recordWarningStart(
+            prediction.minutesLeft,
+            voltage,
+            temperature,
+            level
+        )
 
         // Acquire the partial WakeLock only for this critical countdown
         if (wakeLock?.isHeld != true) {

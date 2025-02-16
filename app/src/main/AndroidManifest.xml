@@ -5,6 +5,8 @@
     <!-- Permissions for wake locks, posting notifications, and (optional) receive boot completed. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Uncomment if you want to detect phone reboots for advanced learning:
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     -->
@@ -27,9 +29,9 @@
         <!-- Declare the foreground service -->
         <service
             android:name=".BatteryMonitorService"
-            android:exported="true"
-            android:foregroundServiceType="dataSync"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.startup.InitializationProvider"
