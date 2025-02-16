@@ -1,13 +1,13 @@
 # Battery Monitor & Cycle Estimator
 
-An intelligent Android battery monitoring application that provides accurate predictions and emergency shutdown warnings using real-time analytics and machine learning techniques.
+An intelligent Android battery monitoring application that provides accurate predictions and emergency shutdown warnings using real-time analytics and adaptive machine learning techniques.
 
 ## Features
 
 - **Battery Health Monitoring**: Tracks battery percentage, voltage, and temperature in real-time
 - **Cycle Estimation**: Predicts battery life cycles based on charge/discharge patterns
 - **Smart Alerts**: Provides timely warnings before critical battery conditions
-- **Intelligent Prediction**: Uses machine learning for accurate device shutdown times
+- **Adaptive Learning**: Self-improves prediction accuracy based on device behavior
 - **Temperature-Aware**: Adjusts predictions based on device temperature
 - **Reliable Background Operation**: Implements robust service recovery mechanisms
 - **Low Resource Impact**: Optimized for minimal battery and memory usage
@@ -17,6 +17,7 @@ An intelligent Android battery monitoring application that provides accurate pre
 ### Core Components
 
 - **ImprovedBatteryCycleEstimator**: Advanced estimation using weighted algorithms
+- **PredictionLearning**: Adaptive system that learns from prediction accuracy
 - **BatteryMonitorService**: Foreground service for continuous monitoring
 - **BatteryViewModel**: Manages UI updates and data processing
 - **WorkManager Integration**: Ensures service reliability
@@ -24,7 +25,7 @@ An intelligent Android battery monitoring application that provides accurate pre
 ### Key Features
 
 ```kotlin
-// Sophisticated battery cycle counting with temperature compensation
+// Sophisticated battery cycle counting with adaptive learning
 class ImprovedBatteryCycleEstimator {
     fun updateBatteryStatus(
         currentLevel: Int,
@@ -34,6 +35,19 @@ class ImprovedBatteryCycleEstimator {
     )
     
     fun predictTimeToShutdown(): ShutdownPrediction
+}
+
+// Adaptive prediction learning system
+class PredictionLearning {
+    fun recordWarningStart(
+        predictedMinutes: Double,
+        voltage: Int,
+        temperature: Double,
+        batteryLevel: Int
+    )
+    
+    fun recordWarningCancelled()
+    fun recordActualShutdown()
 }
 ```
 
@@ -108,16 +122,26 @@ dependencies {
 
 - Battery Usage: < 1% per day
 - Memory Usage: ~10MB RAM
-- Storage: < 1MB for history
+- Storage: ~2MB for history and learning data
 - CPU: Minimal (adaptive polling)
+
+## How Prediction Learning Works
+
+The app implements an adaptive learning system that:
+- Records when shutdown warnings are triggered
+- Tracks whether warnings were accurate or premature
+- Adjusts future predictions based on historical accuracy
+- Maintains separate learning profiles for different temperature ranges
+- Persists learned patterns between app restarts
 
 ## Future Improvements
 
 - Room database implementation for efficient data storage
 - Device-specific voltage threshold calibration
-- Enhanced machine learning prediction model
+- Enhanced machine learning prediction model with multi-factor analysis
 - Additional battery health metrics
-- Device power management API integration
+- Power management API integration
+- Prediction accuracy statistics and visualization
 
 ## Contributing
 
@@ -137,9 +161,16 @@ For support, please open an issue in the GitHub repository.
 
 ## Version History
 
-### 1.0.0 (Current)
+### 1.1.0 (Current)
+- Added adaptive prediction learning system
+- Improved prediction accuracy through historical data analysis
+- Enhanced temperature compensation
+- More reliable shutdown warnings
+- Expanded battery analytics
+
+### 1.0.0
 - Initial release
-- Intelligent battery monitoring with ML-based predictions
+- Basic battery monitoring
 - Temperature-aware battery cycle estimation
 - Emergency shutdown warnings
 - Background service with WorkManager recovery
@@ -147,4 +178,4 @@ For support, please open an issue in the GitHub repository.
 
 ---
 
-**Note**: Predictions are most accurate after 24 hours of usage data collection. Some features may vary by device manufacturer.
+**Note**: Prediction accuracy improves over time as the app learns from your device's behavior patterns. Initial predictions become significantly more accurate after 24-48 hours of usage.
