@@ -10,15 +10,19 @@
     <!-- Button to start the BatteryMonitorService -->
     <Button
         android:id="@+id/startButton"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:padding="12dp"
+        android:layout_gravity="center_horizontal"
         android:text="@string/start_monitoring" />
 
     <!-- Button to stop the BatteryMonitorService -->
     <Button
         android:id="@+id/stopButton"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:padding="12dp"
+        android:layout_gravity="center_horizontal"
         android:text="@string/stop_monitoring"
         android:layout_marginTop="8dp" />
 
@@ -69,8 +73,19 @@
                     android:layout_marginStart="8dp"
                     app:cardCornerRadius="8dp"
                     app:cardElevation="0dp" />
-
             </LinearLayout>
+
+            <!-- View History Button (Fixed touch size and width) -->
+            <Button
+                android:id="@+id/viewHistoryButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="12dp"
+                android:minHeight="48dp"
+                android:layout_gravity="center_horizontal"
+                android:text="@string/view_prediction_history"
+                android:layout_marginTop="16dp" />
+
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 </LinearLayout>

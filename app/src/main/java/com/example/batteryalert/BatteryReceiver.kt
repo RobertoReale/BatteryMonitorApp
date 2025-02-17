@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.BatteryManager
+import android.os.PowerManager
 import android.util.Log
 
 class BatteryReceiver : BroadcastReceiver() {
@@ -25,10 +26,13 @@ class BatteryReceiver : BroadcastReceiver() {
                 return
             }
 
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isPowerSaveMode = powerManager.isPowerSaveMode
+
             val estimator = ImprovedBatteryCycleEstimator.getInstance(context)
             val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                     status == BatteryManager.BATTERY_STATUS_FULL
-            estimator.updateBatteryStatus(batteryPct, temperature, voltage, isCharging)
+            estimator.updateBatteryStatus(batteryPct, temperature, voltage, isCharging, isPowerSaveMode)
 
             val prediction = estimator.predictTimeToShutdown()
 

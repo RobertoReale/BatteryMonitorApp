@@ -1,5 +1,6 @@
 package com.example.batteryalert
 
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -19,6 +20,8 @@ import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.work.*
 import com.google.android.material.card.MaterialCardView
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
@@ -110,12 +113,53 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun showPredictionHistory() {
+        val predictionLearning = PredictionLearning.getInstance(this)
+        val history = predictionLearning.getWarningHistory()
+
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Prediction History")
+
+        val historyText = StringBuilder()
+        history.forEach { outcome ->
+            val warning = outcome.warning
+            val timestamp = java.text.SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
+                .format(Date(warning.startTime))
+
+            historyText.append("📅 $timestamp\n")
+            historyText.append("Predicted: ${warning.predictedMinutes.toInt()} min\n")
+            historyText.append("Battery: ${warning.batteryLevel}%, ${warning.voltage}mV\n")
+
+            when {
+                outcome.wasCancelled ->
+                    historyText.append("Result: ❌ False Alarm\n")
+                outcome.actualShutdownTime != null -> {
+                    val actualMinutes =
+                        (outcome.actualShutdownTime - warning.startTime) / (1000.0 * 60.0)
+                    historyText.append("Result: ⚡ Shutdown after ${actualMinutes.toInt()} min\n")
+                }
+                else ->
+                    historyText.append("Result: ❓ Unknown\n")
+            }
+            historyText.append("\n")
+        }
+
+        if (history.isEmpty()) {
+            historyText.append("No prediction history available yet.")
+        }
+
+        builder.setMessage(historyText.toString())
+        builder.setPositiveButton("OK", null)
+        builder.show()
+    }
+
     // New method to encapsulate all component setup
     private fun setupComponents() {
         Log.d("MainActivity", "Setting up components")
         setupClickListeners()
         observeViewModel()
         setupWorkManager()
+        showPredictionHistory()
     }
 
     // Add direct battery receiver registration
@@ -178,6 +222,10 @@ class MainActivity : ComponentActivity() {
 
         stopButton.setOnClickListener {
             stopMonitoringService()
+        }
+
+        findViewById<Button>(R.id.viewHistoryButton).setOnClickListener {
+            showPredictionHistory()
         }
     }
 

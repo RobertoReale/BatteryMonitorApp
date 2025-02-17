@@ -13,6 +13,8 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
     private var estimatedCycles: Double = prefs.getFloat(KEY_ESTIMATED_CYCLES, 0f).toDouble()
     private var previousBatteryLevel: Int = prefs.getInt(KEY_PREVIOUS_LEVEL, -1)
     private val predictionLearning = PredictionLearning.getInstance(context)
+    private var isPowerSaveMode: Boolean = prefs.getBoolean(KEY_POWER_SAVE_MODE, false)
+
 
     // New fields for improved prediction
     private var lastTemperature: Double = 0.0
@@ -45,6 +47,7 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
         private const val MAX_HISTORY_SIZE = 200
         private const val RECENT_WEIGHT = 2.0
         private const val TEMPERATURE_WEIGHT = 1.5
+        private const val KEY_POWER_SAVE_MODE = "powerSaveMode"
 
         @Volatile
         private var instance: ImprovedBatteryCycleEstimator? = null
@@ -60,8 +63,12 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
         currentLevel: Int,
         temperature: Double,
         voltage: Int,
-        isCharging: Boolean
+        isCharging: Boolean,
+        isPowerSaveMode: Boolean
     ) {
+        this.isPowerSaveMode = isPowerSaveMode
+        this.lastVoltage = voltage  // Make sure this field exists
+
         if (isCharging) {
             // Reset drain rate calculations when charging
             drainRateWindow.clear()
@@ -73,9 +80,12 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
         // Update cycle estimation
         if (previousBatteryLevel != -1 && currentLevel < previousBatteryLevel) {
             val discharge = (previousBatteryLevel - currentLevel).toDouble()
-            cumulativeDischarge += discharge
+            val adjustedDischarge = discharge * getPowerSaveDrainReduction()
+
+            cumulativeDischarge += adjustedDischarge
             val newCycleEstimate = cumulativeDischarge / 100.0
-            estimatedCycles = SMOOTHING_FACTOR * newCycleEstimate + (1 - SMOOTHING_FACTOR) * estimatedCycles
+            estimatedCycles = SMOOTHING_FACTOR * newCycleEstimate +
+                    (1 - SMOOTHING_FACTOR) * estimatedCycles
         }
 
         // Update battery history with enhanced data
@@ -96,6 +106,18 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
         lastTemperature = temperature
         lastVoltage = voltage
         persistState(isCharging)
+    }
+
+    private fun getPowerSaveDrainReduction(): Double {
+        return if (isPowerSaveMode) {
+            when {
+                lastVoltage > 4000 -> 0.85  // High battery → 15% reduction
+                lastVoltage < 3400 -> 0.65  // Low battery → 35% reduction
+                else -> 0.75  // Default 25% reduction
+            }
+        } else {
+            1.0  // No reduction if power saving is off
+        }
     }
 
     private fun calculateDrainRate(currentLevel: Int, temperature: Double, timestamp: Long) {
@@ -181,12 +203,14 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
     fun predictTimeToShutdown(): ShutdownPrediction {
         val history = getBatteryHistory()
         if (history.isEmpty()) {
-            return ShutdownPrediction(Double.POSITIVE_INFINITY, PredictionConfidence.INSUFFICIENT_DATA)
+            return ShutdownPrediction(Double.POSITIVE_INFINITY,
+                PredictionConfidence.INSUFFICIENT_DATA)
         }
 
         val currentRecord = history.last()
         if (currentRecord.isCharging) {
-            return ShutdownPrediction(Double.POSITIVE_INFINITY, PredictionConfidence.CHARGING)
+            return ShutdownPrediction(Double.POSITIVE_INFINITY,
+                PredictionConfidence.CHARGING)
         }
 
         // Get base prediction
@@ -196,8 +220,18 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
         // Apply learned adjustment
         minutesLeft *= predictionLearning.getPredictionAdjustment()
 
+        // Dynamic power save adjustment based on current drain rate
+        if (isPowerSaveMode) {
+            val drainFactor = when {
+                weightedDrainRate < 1.0 -> 1.4  // Low drain → extend by 40%
+                weightedDrainRate < 3.0 -> 1.2  // Moderate drain → extend by 20%
+                else -> 1.1  // High drain → extend by 10%
+            }
+            minutesLeft *= drainFactor
+        }
+
         // Prevent overly optimistic estimates
-        minutesLeft = minutesLeft.coerceAtMost(1440.0)
+        minutesLeft = minutesLeft.coerceAtMost(1440.0)  // Max 24 hours
 
         val confidence = when {
             drainRateWindow.size < 5 -> PredictionConfidence.LOW
@@ -227,7 +261,8 @@ class ImprovedBatteryCycleEstimator private constructor(context: Context) {
             putFloat(KEY_CUMULATIVE_DISCHARGE, cumulativeDischarge.toFloat())
             putFloat(KEY_ESTIMATED_CYCLES, estimatedCycles.toFloat())
             putInt(KEY_PREVIOUS_LEVEL, previousBatteryLevel)
-            putBoolean("IS_CHARGING", isCharging)  // Save charging state
+            putBoolean("IS_CHARGING", isCharging)
+            putBoolean(KEY_POWER_SAVE_MODE, isPowerSaveMode)
             apply()
         }
     }

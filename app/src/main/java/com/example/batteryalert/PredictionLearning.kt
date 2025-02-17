@@ -156,7 +156,7 @@ class PredictionLearning private constructor(context: Context) {
         prefs.edit().putString(KEY_PREDICTION_HISTORY, jsonArray.toString()).apply()
     }
 
-    private fun getWarningHistory(): List<WarningOutcome> {
+    fun getWarningHistory(): List<WarningOutcome> {
         val jsonString = prefs.getString(KEY_PREDICTION_HISTORY, "[]") ?: "[]"
         val jsonArray = JSONArray(jsonString)
         val history = mutableListOf<WarningOutcome>()

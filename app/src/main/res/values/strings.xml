@@ -21,4 +21,7 @@
     <!-- New string for displaying predicted minutes until shutdown -->
     <string name="minutes_left_format">Minutes to Shutdown: %1$s</string>
 
+    <!-- Button text for viewing prediction history -->
+    <string name="view_prediction_history">View Prediction History</string>
+
 </resources>

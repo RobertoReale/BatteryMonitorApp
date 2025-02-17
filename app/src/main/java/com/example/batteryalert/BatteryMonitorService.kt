@@ -24,6 +24,11 @@ class BatteryMonitorService : Service() {
     private lateinit var powerManager: PowerManager
     private var wakeLock: PowerManager.WakeLock? = null
 
+    private var lastBatteryLevel: Int = -1
+    private var lastTemperature: Double = 0.0
+    private var lastVoltage: Int = 0
+    private var isCharging: Boolean = false
+
     @Volatile
     private var isCountdownActive = false
     private var countdownJob: Job? = null
@@ -31,6 +36,21 @@ class BatteryMonitorService : Service() {
     private lateinit var estimator: ImprovedBatteryCycleEstimator
 
     private lateinit var predictionLearning: PredictionLearning
+
+    private val powerSaveModeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == PowerManager.ACTION_POWER_SAVE_MODE_CHANGED) {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                val isPowerSaveMode = powerManager.isPowerSaveMode
+                Log.d("BatteryMonitorService", "Power saving mode changed to: $isPowerSaveMode")
+
+                // Update battery status with new power save mode state
+                if (lastBatteryLevel != -1) {
+                    updateBatteryStatus(lastBatteryLevel, lastTemperature, lastVoltage, isCharging)
+                }
+            }
+        }
+    }
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -76,12 +96,23 @@ class BatteryMonitorService : Service() {
             createNotificationChannel()
             registerBatteryReceiver()
 
+            // Register power save mode receiver
+            registerReceiver(
+                powerSaveModeReceiver,
+                IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            )
+
+            // Log initial power save mode state
+            val isPowerSaveMode = powerManager.isPowerSaveMode
+            Log.d("BatteryMonitorService", "Initial power save mode state: $isPowerSaveMode")
+
             // Start the service in the foreground with an initial notification
             // Ensure notification is created before starting foreground
             val notification = buildNotification()
             Log.d("BatteryMonitorService", "Starting foreground service")
             startForeground(Constants.NOTIFICATION_ID, notification)
             Log.d("BatteryMonitorService", "Service started in foreground")
+
         } catch (e: Exception) {
             Log.e("BatteryMonitorService", "Error in onCreate", e)
             getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
@@ -96,23 +127,41 @@ class BatteryMonitorService : Service() {
         batteryPct: Int,
         temperature: Double,
         voltage: Int,
-        isCharging: Boolean
+        charging: Boolean
     ) {
         try {
-            Log.d("BatteryMonitorService", "Updating battery status")
-            estimator.updateBatteryStatus(batteryPct, temperature, voltage, isCharging)
+            // Store latest values
+            lastBatteryLevel = batteryPct
+            lastTemperature = temperature
+            lastVoltage = voltage
+            isCharging = charging
 
-            // Add these lines to detect critical battery conditions
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isPowerSaveMode = powerManager.isPowerSaveMode
+
+            Log.d("BatteryMonitorService",
+                "Battery update - Level: $batteryPct%, Voltage: $voltage, " +
+                        "Temp: $temperature, Charging: $charging, " +
+                        "Power Saving: $isPowerSaveMode")
+
+            estimator.updateBatteryStatus(
+                batteryPct,
+                temperature,
+                voltage,
+                charging,
+                isPowerSaveMode
+            )
+
             if (voltage <= Constants.MIN_VOLTAGE || batteryPct <= 1) {
                 Log.d("BatteryMonitorService", "Critical battery condition detected")
                 predictionLearning.recordActualShutdown()
             }
 
             val prediction = estimator.predictTimeToShutdown()
-            Log.d("BatteryMonitorService", "Prediction: $prediction")
             updateNotificationWithPrediction(prediction)
 
-            checkShutdownConditions(prediction, voltage, batteryPct, temperature, isCharging)
+            checkShutdownConditions(prediction, voltage, batteryPct, temperature, charging)
+
         } catch (e: Exception) {
             Log.e("BatteryMonitorService", "Error updating battery status", e)
         }
@@ -222,6 +271,7 @@ class BatteryMonitorService : Service() {
                     updateCountdownNotification(secondsLeft, urgencyLevel)
 
                     if (secondsLeft == 0) {
+                        predictionLearning.recordActualShutdown()  // Add this line
                         updateNotification(
                             "Device Shutting Down",
                             "Shutdown imminent - please save your work immediately",
@@ -324,6 +374,7 @@ class BatteryMonitorService : Service() {
             serviceJob.cancel()
             countdownJob?.cancel()
 
+            // Release wake lock if held
             wakeLock?.let {
                 try {
                     if (it.isHeld) {
@@ -337,10 +388,17 @@ class BatteryMonitorService : Service() {
                 }
             }
 
+            // Unregister receivers
             try {
                 unregisterReceiver(batteryReceiver)
             } catch (e: Exception) {
-                Log.e("BatteryMonitorService", "Error unregistering receiver", e)
+                Log.e("BatteryMonitorService", "Error unregistering battery receiver", e)
+            }
+
+            try {
+                unregisterReceiver(powerSaveModeReceiver)
+            } catch (e: Exception) {
+                Log.e("BatteryMonitorService", "Error unregistering power save receiver", e)
             }
 
             // Mark service as not running
