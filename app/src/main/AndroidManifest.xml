@@ -1,16 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.3.0" encoding="utf-8"?>
 <manifest package="com.example.batteryalert"
     xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Aggiungi permessi essenziali -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" /> <!-- Nuovo in Android 14+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" /> <!-- Nuovo -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" /> <!-- Attivare questo -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" /> <!-- Nuovo -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:allowBackup="true"
@@ -18,7 +17,6 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.BatteryAlert">
 
-        <!-- Aggiungi receiver per il riavvio del dispositivo -->
         <receiver
             android:name=".BootCompletedReceiver"
             android:enabled="true"
@@ -31,7 +29,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- BroadcastReceiver modificato per battery -->
         <receiver
             android:name=".BatteryReceiver"
             android:exported="true"
@@ -45,20 +42,17 @@
             </intent-filter>
         </receiver>
 
-        <!-- Servizio modificato -->
         <service
             android:name=".BatteryMonitorService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse|dataSync|systemExempted" />
 
-        <!-- Aggiungi il provider di allarmi -->
         <receiver
             android:name=".AlarmReceiver"
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Il resto rimane uguale -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
