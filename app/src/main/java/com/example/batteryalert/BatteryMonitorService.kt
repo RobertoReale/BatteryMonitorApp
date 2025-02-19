@@ -214,6 +214,12 @@ class BatteryMonitorService : Service() {
             if (voltage <= Constants.MIN_VOLTAGE || batteryPct <= 1) {
                 Log.d("BatteryMonitorService", "Critical battery condition detected")
                 predictionLearning.recordActualShutdown()
+
+                // Immediately write to SharedPreferences
+                getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("shutdownOccurred", true)
+                    .apply()
             }
 
             val prediction = estimator.predictTimeToShutdown()
