@@ -3,12 +3,14 @@ package com.example.batteryalert
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
@@ -78,6 +80,44 @@ class BatteryMonitorService : Service() {
         return START_STICKY
     }
 
+    private fun createHighPriorityNotificationChannel() {
+        val channelId = Constants.CRITICAL_NOTIFICATION_CHANNEL_ID
+        val channelName = Constants.CRITICAL_NOTIFICATION_CHANNEL_NAME
+
+        val channel = NotificationChannel(
+            channelId,
+            channelName,
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            enableVibration(true)
+            enableLights(true)
+            setBypassDnd(true)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            description = "Critical battery alerts"
+        }
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    // Add a periodic heartbeat
+    private var heartbeatJob: Job? = null
+
+    private fun startHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = serviceScope.launch {
+            while (isActive) {
+                // Update the timestamp to indicate that the service is still alive
+                getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
+                    .edit()
+                    .putLong("serviceLastAliveTimestamp", System.currentTimeMillis())
+                    .apply()
+
+                delay(2 * 60 * 1000) // Every 2 minutes
+            }
+        }
+    }
+
     override fun onCreate() {
         try {
             super.onCreate()
@@ -88,6 +128,8 @@ class BatteryMonitorService : Service() {
                 .edit()
                 .putBoolean("isServiceRunning", true)
                 .apply()
+
+            createHighPriorityNotificationChannel()
 
             estimator = ImprovedBatteryCycleEstimator.getInstance(this)
             predictionLearning = PredictionLearning.getInstance(this)
@@ -111,7 +153,24 @@ class BatteryMonitorService : Service() {
             val notification = buildNotification()
             Log.d("BatteryMonitorService", "Starting foreground service")
             startForeground(Constants.NOTIFICATION_ID, notification)
+            startHeartbeat()
             Log.d("BatteryMonitorService", "Service started in foreground")
+
+            // Start alarm as backup
+            AlarmScheduler.scheduleRepeatingAlarm(this)
+
+            // Request system exemption if possible (it is not decisive, it will be just an attempt)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try {
+                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                        // We do not require ignore batteryOptimization, but we try to improve resilience
+                        Log.d("BatteryMonitorService", "Note: App is not exempt from battery optimizations")
+                    }
+                } catch (e: Exception) {
+                    Log.e("BatteryMonitorService", "Error checking battery optimization status", e)
+                }
+            }
 
         } catch (e: Exception) {
             Log.e("BatteryMonitorService", "Error in onCreate", e)
@@ -262,13 +321,8 @@ class BatteryMonitorService : Service() {
                 var secondsLeft = 30
 
                 while (secondsLeft >= 0 && isActive) {
-                    val urgencyLevel = when {
-                        secondsLeft <= 5 -> NotificationManager.IMPORTANCE_HIGH
-                        secondsLeft <= 15 -> NotificationManager.IMPORTANCE_DEFAULT
-                        else -> NotificationManager.IMPORTANCE_LOW
-                    }
 
-                    updateCountdownNotification(secondsLeft, urgencyLevel)
+                    updateCountdownNotification(secondsLeft)
 
                     if (secondsLeft == 0) {
                         predictionLearning.recordActualShutdown()  // Add this line
@@ -302,14 +356,39 @@ class BatteryMonitorService : Service() {
         }
     }
 
-    private fun updateCountdownNotification(secondsLeft: Int, importance: Int) {
-        val title = "Imminent Shutdown Warning"
+    private fun updateCountdownNotification(secondsLeft: Int) {
+        val title = "⚠️ CRITICAL: SHUTDOWN IMMINENT ⚠️"
         val message = String.format(
             Locale.getDefault(),
-            "CRITICAL: Device shutting down in %d seconds!",
+            "Device will shutdown in %d seconds! Save your work NOW!",
             secondsLeft
         )
-        updateNotification(title, message, importance)
+
+        val notification = NotificationCompat.Builder(this, Constants.CRITICAL_NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setOngoing(true)
+            .setFullScreenIntent(getPendingIntent(), true) // Full screen intent per Android 10+
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(Constants.CRITICAL_NOTIFICATION_ID, notification)
+    }
+
+    private fun getPendingIntent(): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        return PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private var lastNotificationText: String? = null
@@ -417,9 +496,11 @@ class BatteryMonitorService : Service() {
     private fun buildNotification(): Notification {
         return NotificationCompat.Builder(this, Constants.NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Battery Monitor Active")
-            .setContentText("Initializing battery monitoring...")
+            .setContentText("Monitoring battery status...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setOngoing(true)
             .build()
     }
 }

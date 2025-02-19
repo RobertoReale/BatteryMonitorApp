@@ -24,4 +24,7 @@
     <!-- Button text for viewing prediction history -->
     <string name="view_prediction_history">View Prediction History</string>
 
+    <string name="critical_notification_channel_name">Critical Battery Alerts</string>
+
+    <string name="critical_notification_channel_description">Urgent notifications when battery is about to die</string>
 </resources>

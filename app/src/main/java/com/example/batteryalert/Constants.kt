@@ -19,4 +19,9 @@ object Constants {
     const val NOTIFICATION_CHANNEL_ID = "battery_monitor_channel"
     const val NOTIFICATION_CHANNEL_NAME = "Battery Monitor Alerts"
     const val NOTIFICATION_ID = 1
+
+    // Critical notification channel
+    const val CRITICAL_NOTIFICATION_CHANNEL_ID = "battery_critical_channel"
+    const val CRITICAL_NOTIFICATION_CHANNEL_NAME = "Critical Battery Alerts"
+    const val CRITICAL_NOTIFICATION_ID = 2
 }

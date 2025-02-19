@@ -1,6 +1,9 @@
 package com.example.batteryalert
 
 import android.app.AlertDialog
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -93,6 +96,11 @@ class MainActivity : ComponentActivity() {
             Log.d("MainActivity", "onCreate started")
             setContentView(R.layout.activity_main)
 
+            createNotificationChannels()
+
+            // Initialize AlarmScheduler
+            AlarmScheduler.scheduleRepeatingAlarm(this)
+
             // Always initialize views
             initializeViews()
             Log.d("MainActivity", "Views initialized")
@@ -111,6 +119,37 @@ class MainActivity : ComponentActivity() {
             Log.e("MainActivity", "Error in onCreate", e)
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun createNotificationChannels() {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        // Channel for normal notifications
+        val regularChannel = NotificationChannel(
+            Constants.NOTIFICATION_CHANNEL_ID,
+            Constants.NOTIFICATION_CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            enableVibration(true)
+            enableLights(true)
+            description = "Regular battery monitoring alerts"
+        }
+
+        // Critical Notification Channel
+        val criticalChannel = NotificationChannel(
+            Constants.CRITICAL_NOTIFICATION_CHANNEL_ID,
+            Constants.CRITICAL_NOTIFICATION_CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            enableVibration(true)
+            enableLights(true)
+            setBypassDnd(true)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            description = "Critical battery alerts that need immediate attention"
+        }
+
+        notificationManager.createNotificationChannel(regularChannel)
+        notificationManager.createNotificationChannel(criticalChannel)
     }
 
     private fun showPredictionHistory() {

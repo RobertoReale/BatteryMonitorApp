@@ -2,14 +2,15 @@
 <manifest package="com.example.batteryalert"
     xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Permissions for wake locks, posting notifications, and (optional) receive boot completed. -->
+    <!-- Aggiungi permessi essenziali -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" /> <!-- Nuovo in Android 14+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <!-- Uncomment if you want to detect phone reboots for advanced learning:
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" /> <!-- Nuovo -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" /> <!-- Attivare questo -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" /> <!-- Nuovo -->
 
     <application
         android:allowBackup="true"
@@ -17,22 +18,47 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.BatteryAlert">
 
-        <!-- BroadcastReceiver to listen for battery changes -->
+        <!-- Aggiungi receiver per il riavvio del dispositivo -->
         <receiver
-            android:name=".BatteryReceiver"
-            android:exported="true">
+            android:name=".BootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:directBootAware="true">
             <intent-filter>
-                <action android:name="android.intent.action.BATTERY_CHANGED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 
-        <!-- Declare the foreground service -->
+        <!-- BroadcastReceiver modificato per battery -->
+        <receiver
+            android:name=".BatteryReceiver"
+            android:exported="true"
+            android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BATTERY_CHANGED" />
+                <action android:name="android.intent.action.BATTERY_LOW" />
+                <action android:name="android.intent.action.BATTERY_OKAY" />
+                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Servizio modificato -->
         <service
             android:name=".BatteryMonitorService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse|dataSync|systemExempted" />
 
+        <!-- Aggiungi il provider di allarmi -->
+        <receiver
+            android:name=".AlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Il resto rimane uguale -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
@@ -42,7 +68,6 @@
                 android:value="androidx.startup" />
         </provider>
 
-        <!-- Main activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
