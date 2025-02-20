@@ -1,5 +1,6 @@
 package com.example.batteryalert
 
+import android.app.AlarmManager
 import android.app.AlertDialog
 import android.app.Notification
 import android.app.NotificationChannel
@@ -9,9 +10,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.util.Log
 import android.view.View
 import android.widget.Button
@@ -64,6 +67,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun requestExactAlarmPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) {
+                try {
+                    val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    intent.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error requesting exact alarm permission", e)
+                }
+            }
+        }
+    }
+
     private fun checkRequiredPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val permissions = arrayOf(
@@ -82,11 +100,17 @@ class MainActivity : ComponentActivity() {
                 Log.d("MainActivity", "All permissions already granted")
                 setupComponents()
                 startMonitoringService()
+
+                // Request battery optimization exemption after starting the service
+                requestBatteryOptimizationExemption()
             }
         } else {
             Log.d("MainActivity", "No permissions needed for this Android version")
             setupComponents()
             startMonitoringService()
+
+            // Still request battery optimization exemption for Android M-R
+            requestBatteryOptimizationExemption()
         }
     }
 
@@ -108,9 +132,13 @@ class MainActivity : ComponentActivity() {
             // Check and request permissions if needed
             if (hasRequiredPermissions()) {
                 Log.d("MainActivity", "Has required permissions, setting up components")
+                requestExactAlarmPermission()
                 setupComponents()
                 // Automatically start monitoring if permissions are already granted
                 startMonitoringService()
+
+                // Request battery optimization exemption here
+                requestBatteryOptimizationExemption()
             } else {
                 Log.d("MainActivity", "Requesting permissions")
                 checkRequiredPermissions()
@@ -350,9 +378,24 @@ class MainActivity : ComponentActivity() {
         stopButton.isEnabled = isMonitoring
     }
 
+    private fun requestBatteryOptimizationExemption() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+            try {
+                val intent = Intent().apply {
+                    action = android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error requesting battery optimization exemption", e)
+            }
+        }
+    }
+
     private fun setupWorkManager() {
         val constraints = Constraints.Builder()
-            .setRequiresBatteryNotLow(true)
+            .setRequiresBatteryNotLow(false) // Changed from true to false
             .build()
 
         val restartWorkerRequest = PeriodicWorkRequestBuilder<BatteryMonitorRestartWorker>(
@@ -364,13 +407,19 @@ class MainActivity : ComponentActivity() {
                 WorkRequest.MIN_BACKOFF_MILLIS,
                 TimeUnit.MILLISECONDS
             )
+            .setInitialDelay(2, TimeUnit.MINUTES)
             .build()
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             WORKER_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             restartWorkerRequest
         )
+
+        // Add one-time work that runs immediately
+        val immediateWork = OneTimeWorkRequestBuilder<BatteryMonitorRestartWorker>()
+            .build()
+        WorkManager.getInstance(this).enqueue(immediateWork)
     }
 
     companion object {

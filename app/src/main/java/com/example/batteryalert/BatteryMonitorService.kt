@@ -1,5 +1,6 @@
 package com.example.batteryalert
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -54,6 +55,76 @@ class BatteryMonitorService : Service() {
         }
     }
 
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.d("BatteryMonitorService", "Task removed, ensuring service continues")
+
+        // Persist that we detected the app being removed from recents
+        getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
+            .edit()
+            .putLong("lastTaskRemovedTime", System.currentTimeMillis())
+            .apply()
+
+        // Reschedule our alarm
+        AlarmScheduler.scheduleRepeatingAlarm(this)
+
+        // Schedule a restart of our service with proper permission handling
+        try {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val restartIntent = Intent(this, BatteryMonitorService::class.java)
+            val pendingIntent = PendingIntent.getService(
+                this, 1, restartIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        System.currentTimeMillis() + 1000,
+                        pendingIntent
+                    )
+                } else {
+                    // Fall back to inexact alarm
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        System.currentTimeMillis() + 1000,
+                        pendingIntent
+                    )
+                }
+            } else {
+                // For older Android versions
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 1000,
+                    pendingIntent
+                )
+            }
+        } catch (e: SecurityException) {
+            Log.e("BatteryMonitorService", "Cannot schedule exact alarm", e)
+            // Fall back to inexact alarm
+            try {
+                val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val restartIntent = Intent(this, BatteryMonitorService::class.java)
+                val pendingIntent = PendingIntent.getService(
+                    this, 1, restartIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 1000,
+                    pendingIntent
+                )
+            } catch (e2: Exception) {
+                Log.e("BatteryMonitorService", "Failed to set fallback alarm", e2)
+            }
+        } catch (e: Exception) {
+            Log.e("BatteryMonitorService", "Error in onTaskRemoved", e)
+        }
+    }
+
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d("BatteryMonitorService", "Battery broadcast received in service")
@@ -77,6 +148,13 @@ class BatteryMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("BatteryMonitorService", "Service started via onStartCommand")
+
+        getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("isServiceRunning", true)
+            .putLong("serviceLastAliveTimestamp", System.currentTimeMillis())
+            .apply()
+
         return START_STICKY
     }
 

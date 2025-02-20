@@ -19,17 +19,16 @@ class BatteryReceiver : BroadcastReceiver() {
                 return
             }
             Intent.ACTION_BATTERY_CHANGED -> {
-                // Continua con il codice esistente
+                // Continue with existing code
             }
             Intent.ACTION_POWER_DISCONNECTED -> {
-                // Assicurati che il servizio sia in esecuzione quando scollegato dall'alimentazione
+                // Make sure the service is running when unplugged from power
                 forciblyStartMonitorService(context)
                 return
             }
             else -> return
         }
 
-        // Codice esistente per ACTION_BATTERY_CHANGED...
         val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
         val voltage = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1) // in mV
@@ -55,12 +54,12 @@ class BatteryReceiver : BroadcastReceiver() {
 
         val prediction = estimator.predictTimeToShutdown()
 
-        // Modifica le soglie per essere più aggressive
-        val needsMonitoring = batteryPct <= Constants.LOW_BATTERY_PERCENTAGE + 10 ||  // Aumenta la soglia a 30%
-                voltage < Constants.LOW_VOLTAGE_THRESHOLD + 200 ||  // Aumenta la soglia a 3400
-                prediction.minutesLeft < 20.0  // Aumenta la finestra a 20 minuti
+        // Change thresholds to be more aggressive
+        val needsMonitoring = batteryPct <= Constants.LOW_BATTERY_PERCENTAGE + 10 ||  // Increase the threshold to 30%
+                voltage < Constants.LOW_VOLTAGE_THRESHOLD + 200 ||  // Increase the threshold to 3400
+                prediction.minutesLeft < 20.0  // Increase the window to 20 minutes
 
-        // Verifica lo stato del servizio e avvialo se necessario
+        // Check the service status and start it if necessary
         val prefs = context.getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
         val isServiceRunning = prefs.getBoolean("isServiceRunning", false)
         val lastAliveTimestamp = prefs.getLong("serviceLastAliveTimestamp", 0)
@@ -72,7 +71,7 @@ class BatteryReceiver : BroadcastReceiver() {
                     "prediction: ${prediction.minutesLeft} minutes")
             context.startForegroundService(Intent(context, BatteryMonitorService::class.java))
 
-            // Assicurati che l'alarm sia programmato
+            // Make sure the alarm is programmed
             AlarmScheduler.scheduleRepeatingAlarm(context)
 
             prefs.edit().putBoolean("isServiceRunning", true).apply()
@@ -90,10 +89,10 @@ class BatteryReceiver : BroadcastReceiver() {
             serviceIntent.putExtra("CRITICAL_START", true)
             context.startForegroundService(serviceIntent)
 
-            // Programma l'allarme per sicurezza
+            // Set alarm for security
             AlarmScheduler.scheduleRepeatingAlarm(context)
 
-            // Aggiorna lo stato
+            // Update status
             context.getSharedPreferences("BatteryMonitorPrefs", Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean("isServiceRunning", true)

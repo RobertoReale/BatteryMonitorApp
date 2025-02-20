@@ -22,7 +22,11 @@ object AlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val triggerTimeMs = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(INTERVAL_MINUTES)
+        val triggerTimeMs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5) // More frequent on Android 12+
+        } else {
+            System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(INTERVAL_MINUTES)
+        }
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

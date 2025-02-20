@@ -17,6 +17,14 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.BatteryAlert">
 
+        <!-- Content provider for early service start -->
+        <provider
+            android:name=".ServiceStarterProvider"
+            android:authorities="${applicationId}.servicestarter"
+            android:enabled="true"
+            android:exported="false"
+            android:initOrder="100" />
+
         <receiver
             android:name=".BootCompletedReceiver"
             android:enabled="true"
